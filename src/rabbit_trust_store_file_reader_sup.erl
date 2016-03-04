@@ -15,55 +15,41 @@
 %% Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 %%
 
--module(rabbit_trust_store_sup).
+-module(rabbit_trust_store_file_reader_sup).
 -behaviour(supervisor).
 
 %% API
--export([start_link/1]).
+-export([start_link/0]).
+-export([start_file_reader/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
 %% Macros
 -define(SUPERVISOR, ?MODULE).
--define(TAB, rabbit_trust_store).
-
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
 
-start_link(Options) ->
-	supervisor:start_link({local, ?SUPERVISOR}, ?MODULE, [Options]).
+start_link() ->
+	supervisor:start_link({local, ?SUPERVISOR}, ?MODULE, []).
+
+start_file_reader(Filename) ->
+	supervisor:start_child(?SUPERVISOR, [Filename]).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
 %% @private
-init([Options]) ->
-	rabbit_trust_store_certificates = ets:new(rabbit_trust_store_certificates, [
-		named_table,
-		ordered_set,
-		public,
-		{read_concurrency, true}
-	]),
-	rabbit_trust_store_sources = ets:new(rabbit_trust_store_sources, [
-		named_table,
-		bag,
-		public,
-		{read_concurrency, true}
-	]),
+init([]) ->
 	ChildSpecs = [
-		{rabbit_trust_store_event:manager(),
-			{gen_event, start_link, [{local, rabbit_trust_store_event:manager()}]},
-			permanent, 5000, worker, [gen_event]},
-		?CHILD(rabbit_trust_store, worker, []),
-		?CHILD(rabbit_trust_store_file_sup, supervisor, [proplists:get_value(file, Options, [])])
+		{undefined,
+			{rabbit_trust_store_file_reader, start_link, []},
+			temporary, 5000, worker, [rabbit_trust_store_file_reader]}
 	],
-	Restart = {one_for_one, 1, 5},
+	Restart = {simple_one_for_one, 10, 10},
 	{ok, {Restart, ChildSpecs}}.
 
 %%%-------------------------------------------------------------------
